@@ -1,0 +1,8 @@
+[package]
+name = "mars_terminal"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+mars_math = { version = "0.1.0", path = "../mars_math" }
+termina = { git = "https://github.com/helix-editor/termina", version = "0.1.0-beta.1" }
