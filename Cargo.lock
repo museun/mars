@@ -100,6 +100,8 @@ version = "0.1.0"
 dependencies = [
  "compact_str",
  "mars_math",
+ "unicode-segmentation",
+ "unicode-width",
 ]
 
 [[package]]
@@ -175,9 +177,9 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "signal-hook"
-version = "0.3.17"
+version = "0.3.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8621587d4798caf8eb44879d42e56b9a93ea5dcd315a6487c357130095b62801"
+checksum = "d881a16cf4426aa584979d30bd82cb33429027e42122b169753d6ef1085ed6e2"
 dependencies = [
  "libc",
  "signal-hook-registry",
@@ -207,7 +209,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "termina"
 version = "0.1.0-beta.1"
-source = "git+https://github.com/helix-editor/termina#8ae1d58a292775b6e409ff5b518f0fcb0092525c"
+source = "git+https://github.com/helix-editor/termina?rev=07cc87ef7ae03e63557da8d73f1eb8a6028b23ca#07cc87ef7ae03e63557da8d73f1eb8a6028b23ca"
 dependencies = [
  "bitflags",
  "parking_lot",
@@ -215,6 +217,18 @@ dependencies = [
  "signal-hook",
  "windows-sys",
 ]
+
+[[package]]
+name = "unicode-segmentation"
+version = "1.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6ccf251212114b54433ec949fd6a7841275f9ada20dddd2f29e9ceea4501493"
+
+[[package]]
+name = "unicode-width"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fc81956842c57dac11422a97c3b8195a1ff727f06e85c84ed2e8aa277c9a0fd"
 
 [[package]]
 name = "windows-sys"

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, thread::JoinHandle};
+use std::{collections::VecDeque, thread::JoinHandle};
 
 use mars_math::{Delta, Position, Size};
 use termina::Terminal as _;
@@ -15,98 +15,115 @@ const fn reset(f: termina::escape::csi::DecPrivateModeCode) -> termina::escape::
     ))
 }
 
-fn modify(
-    d: &mut impl std::io::Write,
-    mode: fn(termina::escape::csi::DecPrivateModeCode) -> termina::escape::csi::Csi,
-) -> std::io::Result<()> {
-    use termina::escape::csi::DecPrivateModeCode as Dec;
-    for m in [
-        Dec::MouseTracking,
-        Dec::ButtonEventMouse,
-        Dec::AnyEventMouse,
-        Dec::RXVTMouse,
-        Dec::SGRMouse,
-    ] {
-        write!(d, "{}", mode(m))?;
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct Config {
+    pub(crate) hide_cursor: bool,
+    pub(crate) mouse_capture: bool,
+    pub(crate) ctrl_c_quits: bool,
+    pub(crate) use_alt_screen: bool,
+    pub(crate) hook_panics: bool,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self::new()
     }
-    d.flush()
 }
 
-fn kitty<const N: usize>(
-    d: &mut impl std::io::Write,
-    flags: [termina::escape::csi::Keyboard; N],
-) -> std::io::Result<()> {
-    for flag in flags {
-        write!(d, "{}", termina::escape::csi::Csi::Keyboard(flag))?;
+impl Config {
+    pub const fn new() -> Self {
+        Self {
+            hide_cursor: true,
+            mouse_capture: true,
+            ctrl_c_quits: true,
+            use_alt_screen: true,
+            hook_panics: true,
+        }
     }
-    d.flush()
-}
 
-fn build(d: &mut impl std::io::Write) -> std::io::Result<()> {
-    modify(d, set)
-    // kitty(
-    //     d,
-    //     [termina::escape::csi::Keyboard::PushFlags(
-    //         termina::escape::csi::KittyKeyboardFlags::DISAMBIGUATE_ESCAPE_CODES
-    //             | termina::escape::csi::KittyKeyboardFlags::REPORT_ALTERNATE_KEYS
-    //             | termina::escape::csi::KittyKeyboardFlags::REPORT_EVENT_TYPES,
-    //     )],
-    // )
-}
+    pub const fn hide_cursor(mut self, hide_cursor: bool) -> Self {
+        self.hide_cursor = hide_cursor;
+        self
+    }
 
-fn teardown(d: &mut impl std::io::Write) -> std::io::Result<()> {
-    modify(d, reset)
-    // kitty(d, [termina::escape::csi::Keyboard::PopFlags(1)])
+    pub const fn mouse_capture(mut self, mouse_capture: bool) -> Self {
+        self.mouse_capture = mouse_capture;
+        self
+    }
+
+    pub const fn ctrl_c_quits(mut self, ctrl_c_quits: bool) -> Self {
+        self.ctrl_c_quits = ctrl_c_quits;
+        self
+    }
+
+    pub const fn use_alt_screen(mut self, use_alt_screen: bool) -> Self {
+        self.use_alt_screen = use_alt_screen;
+        self
+    }
+
+    pub const fn hook_panics(mut self, hook_panics: bool) -> Self {
+        self.hook_panics = hook_panics;
+        self
+    }
 }
 
 pub struct Terminal {
-    sender: std::sync::mpsc::Sender<Request>,
-    requests: std::sync::mpsc::Receiver<Request>, // how are we gonna handle this?
     terminal: termina::PlatformTerminal,
     events: std::sync::mpsc::Receiver<Event>,
     size: Size,
+    config: Config,
     _handle: JoinHandle<()>,
 }
 
 impl Terminal {
-    pub fn create() -> std::io::Result<Self> {
-        let (sender, requests) = std::sync::mpsc::channel();
+    pub fn create(config: Config) -> std::io::Result<Self> {
         let (tx, events) = std::sync::mpsc::channel();
-        let terminal = termina::PlatformTerminal::new()?;
+        let mut terminal = termina::PlatformTerminal::new()?;
+        terminal.enter_raw_mode()?;
 
-        let (h, w) = terminal.get_dimensions()?;
-        let size = Size::new(w as _, h as _);
+        let termina::WindowSize { cols, rows } = terminal.get_dimensions()?;
+        let size = Size::new(cols as _, rows as _);
+
+        Self::initialize(&mut terminal, config)?;
 
         let reader = terminal.event_reader();
-        let _handle = std::thread::spawn(move || {
-            let mut state = EventState::default();
-            while let Ok(ev) = reader.read(|_| true) {
-                let Some(ev) = Event::translate(ev, &mut state) else {
-                    continue;
-                };
-                let was_quit = ev.is_quit();
-                if tx.send(ev).is_err() {
-                    break;
+        let _handle = std::thread::spawn({
+            move || {
+                const CTRL_C: Keybind = Keybind::char('c').control();
+
+                let mut state = EventState::default();
+                'outer: while let Ok(ev) = reader.read(|_| true) {
+                    for ev in state.translate(&ev) {
+                        let mut was_quit = ev.is_quit();
+                        if config.ctrl_c_quits {
+                            was_quit ^= ev.is_keybind(&CTRL_C)
+                        }
+
+                        if tx.send(ev).is_err() {
+                            break 'outer;
+                        }
+
+                        if was_quit {
+                            break 'outer;
+                        }
+                    }
                 }
-                if was_quit {
-                    break;
-                }
+
+                let _ = tx.send(Event::Quit);
             }
-            let _ = tx.send(Event::Quit);
         });
 
         Ok(Self {
-            sender,
-            requests,
             terminal,
             events,
             size,
+            config,
             _handle,
         })
     }
 
-    pub fn size(&self) -> Size {
-        todo!();
+    pub const fn size(&self) -> Size {
+        self.size
     }
 
     pub fn try_read_event(&mut self) -> Option<Event> {
@@ -115,11 +132,69 @@ impl Terminal {
                 if let Event::Resize { size } = ev {
                     self.size = size;
                 }
-                // if is ctrl_c keybind and configured, send quit as well
                 Some(ev)
             }
             Err(std::sync::mpsc::TryRecvError::Disconnected) => Some(Event::Quit),
             _ => None,
+        }
+    }
+
+    fn initialize(terminal: &mut impl termina::Terminal, config: Config) -> std::io::Result<()> {
+        use termina::escape::csi::DecPrivateModeCode as Dec;
+
+        if config.use_alt_screen {
+            write!(terminal, "{}", set(Dec::ClearAndEnableAlternateScreen))?;
+        }
+
+        if config.hide_cursor {
+            write!(terminal, "{}", reset(Dec::ShowCursor))?;
+        }
+
+        if config.mouse_capture {
+            for mouse in [
+                Dec::MouseTracking,
+                Dec::ButtonEventMouse,
+                Dec::AnyEventMouse,
+                Dec::RXVTMouse,
+                Dec::SGRMouse,
+            ] {
+                write!(terminal, "{}", set(mouse))?;
+            }
+        }
+
+        if config.hook_panics {
+            terminal.set_panic_hook(move |out| Self::reset(config, out));
+        }
+
+        terminal.flush()?;
+
+        Ok(())
+    }
+
+    fn reset(config: Config, terminal: &mut dyn std::io::Write) {
+        use termina::escape::csi::DecPrivateModeCode as Dec;
+
+        if config.mouse_capture {
+            for mouse in [
+                Dec::MouseTracking,
+                Dec::ButtonEventMouse,
+                Dec::AnyEventMouse,
+                Dec::RXVTMouse,
+                Dec::SGRMouse,
+            ] {
+                _ = write!(terminal, "{}", reset(mouse));
+                _ = terminal.flush();
+            }
+        }
+
+        if config.use_alt_screen {
+            _ = write!(terminal, "{}", reset(Dec::ClearAndEnableAlternateScreen));
+            _ = terminal.flush();
+        }
+
+        if config.hide_cursor {
+            _ = write!(terminal, "{}", set(Dec::ShowCursor));
+            _ = terminal.flush();
         }
     }
 }
@@ -133,6 +208,13 @@ impl std::io::Write for Terminal {
     #[inline]
     fn flush(&mut self) -> std::io::Result<()> {
         self.terminal.flush()
+    }
+}
+
+impl Drop for Terminal {
+    fn drop(&mut self) {
+        Self::reset(self.config, self);
+        _ = self.terminal.enter_cooked_mode();
     }
 }
 
@@ -155,11 +237,6 @@ pub enum Event {
         pos: Position,
         down: bool,
     },
-    MouseDragStart {
-        button: MouseButton,
-        modifiers: KeyModifiers,
-        origin: Position,
-    },
     MouseDragHeld {
         button: MouseButton,
         modifiers: KeyModifiers,
@@ -171,6 +248,7 @@ pub enum Event {
         button: MouseButton,
         modifiers: KeyModifiers,
         origin: Position,
+        pos: Position,
     },
     Resize {
         size: Size,
@@ -183,77 +261,85 @@ impl Event {
         matches!(self, Self::Quit)
     }
 
-    fn translate(ev: termina::Event, state: &mut EventState) -> Option<Self> {
-        match ev {
-            termina::Event::Key(ke) => translate_key(ke, state),
-            termina::Event::Mouse(me) => translate_mouse(me, state),
-            termina::Event::WindowResized { rows, cols } => {
-                let size = Size::new(cols as _, rows as _);
-                Some(Event::Resize { size })
-            }
-            termina::Event::FocusIn | termina::Event::FocusOut | termina::Event::Paste(_) => None,
-            _ => None,
-        }
+    pub fn is_keybind(&self, keybind: &Keybind) -> bool {
+        let &Self::KeyPress { key, modifiers } = self else {
+            return false;
+        };
+        Keybind { key, modifiers } == *keybind
     }
 }
 
-fn translate_mouse(me: termina::event::MouseEvent, state: &mut EventState) -> Option<Event> {
-    use termina::event::MouseEventKind as T;
-    let modifiers = KeyModifiers::from_termina(me.modifiers);
-    let pos = Position::new(me.column as _, me.row as _);
-    state.pos = pos;
-
-    let ev = match me.kind {
-        T::Down(..) | T::Up(..) | T::Drag(..) => state.update(me),
-        T::Moved => Event::MouseMove { pos, modifiers },
-        T::ScrollDown => Event::MouseScroll {
-            delta: Delta::new(0, -1),
-        },
-        T::ScrollUp => Event::MouseScroll {
-            delta: Delta::new(0, 1),
-        },
-        T::ScrollLeft => Event::MouseScroll {
-            delta: Delta::new(-1, 0),
-        },
-        T::ScrollRight => Event::MouseScroll {
-            delta: Delta::new(1, 0),
-        },
-    };
-
-    Some(ev)
+#[derive(Copy, Clone, Default, Debug, PartialEq)]
+enum DragState {
+    Active {
+        origin: Position,
+        previous: Position,
+        button: MouseButton,
+    },
+    Maybe {
+        origin: Position,
+    },
+    #[default]
+    None,
 }
 
-fn translate_key(ke: termina::event::KeyEvent, _state: &mut EventState) -> Option<Event> {
-    // TODO progressively support kitty so we can get Release events as well
-    if !matches!(ke.kind, termina::event::KeyEventKind::Press) {
-        return None;
-    }
-
-    let key = Key::from_termina(ke.code)?;
-    let modifiers = KeyModifiers::from_termina(ke.modifiers);
-    Some(Event::KeyPress { key, modifiers })
-}
-
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct EventState {
     pos: Position,
-    drag_start: Option<Position>,
-    active: Option<MouseButton>,
+    drag_state: DragState,
+    queue: VecDeque<Event>,
 }
 
 impl EventState {
-    fn update(&mut self, me: termina::event::MouseEvent) -> Event {
-        use termina::event::MouseEventKind as T;
-        let pos = Position::new(me.column as _, me.row as _);
-        let modifiers = KeyModifiers::from_termina(me.modifiers);
+    fn translate(&mut self, event: &termina::event::Event) -> impl IntoIterator<Item = Event> {
+        self.process(event);
+        self.queue.drain(..)
+    }
 
-        match me.kind {
+    fn process(&mut self, event: &termina::event::Event) {
+        match event {
+            &termina::Event::Key(ke) => self.translate_key(ke),
+            &termina::Event::Mouse(me) => self.translate_mouse(me),
+            &termina::Event::WindowResized(termina::WindowSize { rows, cols }) => {
+                let size = Size::new(cols as u32, rows as u32);
+                self.queue.push_back(Event::Resize { size });
+            }
+            termina::Event::FocusIn | termina::Event::FocusOut | termina::Event::Paste(_) => {}
+            _ => {}
+        }
+    }
+
+    fn translate_key(&mut self, ke: termina::event::KeyEvent) {
+        if !matches!(ke.kind, termina::event::KeyEventKind::Press) {
+            return;
+        }
+
+        let Some(key) = Key::from_termina(ke.code) else {
+            return;
+        };
+        let mut modifiers = KeyModifiers::from_termina(ke.modifiers);
+        if let Key::Char(ch) = key {
+            if ch.is_uppercase() || ascii_is_uppercase_symbols(ch) {
+                modifiers |= KeyModifiers::SHIFT
+            }
+        }
+        self.queue.push_back(Event::KeyPress { key, modifiers });
+    }
+
+    fn translate_mouse(&mut self, me: termina::event::MouseEvent) {
+        use termina::event::MouseEventKind as T;
+        let modifiers = KeyModifiers::from_termina(me.modifiers);
+        let pos = Position::new(me.column as _, me.row as _);
+        self.pos = pos;
+
+        let ev = match me.kind {
             T::Down(button) => {
-                let button = MouseButton::from_termina(button);
-                self.active = Some(button);
-                self.drag_start = Some(pos);
+                if let state @ DragState::None = &mut self.drag_state {
+                    *state = DragState::Maybe { origin: pos };
+                };
+
                 Event::MousePress {
-                    button,
+                    button: MouseButton::from_termina(button),
                     modifiers,
                     pos,
                     down: true,
@@ -262,82 +348,109 @@ impl EventState {
 
             T::Up(button) => {
                 let button = MouseButton::from_termina(button);
-                if let Some(button) = self.active {
-                    let origin = self.drag_start.unwrap_or(pos);
-                    self.active = None;
-                    self.drag_start = None;
-                    Event::MouseDragRelease {
-                        button,
-                        modifiers,
-                        origin,
+                if let DragState::Active {
+                    origin,
+                    button: old,
+                    ..
+                } = self.drag_state
+                {
+                    if old == button {
+                        // soft-reset the state so can we can remove it in the phantom mouse move
+                        let _ = std::mem::replace(
+                            &mut self.drag_state,
+                            DragState::Maybe { origin: pos },
+                        );
+
+                        self.queue.push_back(Event::MouseDragRelease {
+                            button,
+                            modifiers,
+                            origin,
+                            pos,
+                        });
                     }
-                } else {
-                    Event::MousePress {
-                        button,
-                        modifiers,
-                        pos,
-                        down: false,
-                    }
+                }
+
+                Event::MousePress {
+                    button,
+                    modifiers,
+                    pos,
+                    down: false,
                 }
             }
 
             T::Drag(button) => {
                 let button = MouseButton::from_termina(button);
-                let origin = self.drag_start.unwrap_or(pos);
-                if self.active.is_none() {
-                    self.active = Some(button);
-                    self.drag_start = Some(pos);
-                    return Event::MousePress {
+                match self.drag_state {
+                    DragState::Active {
+                        origin,
+                        ref mut previous,
                         button,
-                        modifiers,
-                        pos,
-                        down: true,
-                    };
-                }
+                    } => {
+                        let previous = std::mem::replace(previous, pos);
+                        if previous == pos {
+                            return;
+                        }
+                        Event::MouseDragHeld {
+                            button,
+                            modifiers,
+                            origin,
+                            pos,
+                            delta: previous.delta(pos),
+                        }
+                    }
 
-                if pos == origin {
-                    Event::MouseDragStart {
-                        button,
-                        modifiers,
-                        origin,
+                    DragState::Maybe { origin } => {
+                        self.drag_state = DragState::Active {
+                            origin,
+                            previous: pos,
+                            button,
+                        };
+                        Event::MouseDragHeld {
+                            button,
+                            modifiers,
+                            origin,
+                            pos,
+                            delta: origin.delta(pos),
+                        }
                     }
-                } else {
-                    Event::MouseDragHeld {
+
+                    DragState::None => Event::MouseDragHeld {
                         button,
                         modifiers,
-                        origin,
+                        origin: pos,
                         pos,
-                        delta: pos.delta(origin),
-                    }
+                        delta: <Delta<i32>>::ZERO,
+                    },
                 }
             }
 
             T::Moved => {
-                self.active.take();
-                self.drag_start.take();
+                if let DragState::Maybe { origin } = std::mem::take(&mut self.drag_state) {
+                    if origin == pos {
+                        return;
+                    }
+                }
                 Event::MouseMove { pos, modifiers }
             }
 
-            _ => unreachable!(),
-        }
-    }
-}
+            T::ScrollDown => Event::MouseScroll {
+                delta: Delta::new(0, -1),
+            },
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum ButtonState {
-    JustDown,
-    Down,
-    JustUp,
-    Up,
-}
+            T::ScrollUp => Event::MouseScroll {
+                delta: Delta::new(0, 1),
+            },
 
-impl ButtonState {
-    fn settle(&mut self) {
-        *self = match self {
-            Self::JustDown => Self::Down,
-            Self::JustUp => Self::Up,
-            _ => return,
-        }
+            T::ScrollLeft => Event::MouseScroll {
+                delta: Delta::new(-1, 0),
+            },
+
+            T::ScrollRight => Event::MouseScroll {
+                delta: Delta::new(1, 0),
+            },
+        };
+
+        self.queue.push_back(ev);
     }
 }
 
@@ -421,6 +534,88 @@ impl KeyModifiers {
     }
 }
 
+// TODO make a note that auto-casefolding is only done for 7-bit ASCII
+const fn ascii_is_uppercase_symbols(ch: char) -> bool {
+    matches!(
+        ch,
+        '~' | '!'
+            | '@'
+            | '#'
+            | '$'
+            | '%'
+            | '^'
+            | '&'
+            | '*'
+            | '('
+            | ')'
+            | '_'
+            | '+'
+            | '{'
+            | '}'
+            | '|'
+            | '"'
+            | '<'
+            | '>'
+            | '?'
+    )
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Keybind {
+    pub key: Key,
+    pub modifiers: KeyModifiers,
+}
+
+impl Keybind {
+    pub const fn new(key: Key) -> Self {
+        Self {
+            key,
+            modifiers: KeyModifiers::NONE,
+        }
+    }
+
+    pub const fn char(char: char) -> Self {
+        let mut modifiers = KeyModifiers::NONE;
+        if char.is_uppercase() || ascii_is_uppercase_symbols(char) {
+            modifiers.0 |= KeyModifiers::SHIFT.0;
+        }
+        Self {
+            key: Key::Char(char),
+            modifiers,
+        }
+    }
+
+    pub const fn shift(mut self) -> Self {
+        self.modifiers.0 |= KeyModifiers::SHIFT.0;
+        self
+    }
+
+    pub const fn alt(mut self) -> Self {
+        self.modifiers.0 |= KeyModifiers::ALT.0;
+        self
+    }
+
+    pub const fn control(mut self) -> Self {
+        self.modifiers.0 |= KeyModifiers::CONTROL.0;
+        self
+    }
+
+    pub const fn super_key(mut self) -> Self {
+        self.modifiers.0 |= KeyModifiers::SUPER.0;
+        self
+    }
+
+    pub const fn hyper(mut self) -> Self {
+        self.modifiers.0 |= KeyModifiers::HYPER.0;
+        self
+    }
+
+    pub const fn meta(mut self) -> Self {
+        self.modifiers.0 |= KeyModifiers::META.0;
+        self
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Key {
@@ -483,84 +678,5 @@ impl Key {
             _ => return None,
         };
         Some(this)
-    }
-}
-
-#[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
-pub enum Action {
-    #[default]
-    Continue,
-    Quit,
-}
-
-enum Request {
-    SetTitle(String),
-}
-
-#[derive(Clone)]
-pub struct Context {
-    tx: std::sync::mpsc::Sender<Request>,
-}
-
-impl Context {
-    pub fn new(term: &Terminal) -> Self {
-        Self {
-            tx: term.sender.clone(),
-        }
-    }
-
-    pub fn set_title(&self, title: impl ToString) -> bool {
-        self.tx.send(Request::SetTitle(title.to_string())).is_ok()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use termina::{
-        Event, PlatformTerminal,
-        event::{KeyCode, KeyEvent},
-    };
-
-    use super::*;
-    #[test]
-    fn asdf() {
-        fn defer(f: impl FnOnce()) -> impl Drop {
-            struct Defer<F: FnOnce()>(Option<F>);
-            impl<F: FnOnce()> Drop for Defer<F> {
-                fn drop(&mut self) {
-                    let Some(f) = self.0.take() else { return };
-                    (f)()
-                }
-            }
-            Defer(Some(f))
-        }
-
-        let mut t = PlatformTerminal::new().unwrap();
-        build(&mut t).unwrap();
-        let e = t.event_reader();
-
-        let _d = defer(|| _ = teardown(&mut std::io::stdout()));
-
-        let mut state = EventState::default();
-
-        while let Ok(ev) = e.read(|_| true) {
-            if let Event::Key(KeyEvent {
-                code: KeyCode::Char('q'),
-                ..
-            }) = ev
-            {
-                break;
-            };
-
-            if let Event::Key(ke) = ev {
-                println!("\r{ke:?}")
-            }
-
-            // totally forgot what I was doing getting this set up..
-            if let Event::Mouse(me) = ev {
-                let e = translate_mouse(me, &mut state);
-                println!("\r{e:?}");
-            }
-        }
     }
 }

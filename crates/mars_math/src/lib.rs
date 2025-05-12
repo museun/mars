@@ -1,196 +1,121 @@
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Size<T = u32> {
-    pub width: T,
-    pub height: T,
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
+
+mod macros;
+
+mod size;
+pub use size::Size;
+
+mod delta;
+pub use delta::Delta;
+
+mod position;
+pub use position::Position;
+
+mod anchor;
+pub use anchor::{Anchor, Anchor2};
+
+mod axis;
+pub use axis::Axis;
+
+mod margin;
+pub use margin::Margin;
+
+pub trait Num
+where
+    Self: PartialEq
+        + Copy
+        + Add<Self, Output = Self>
+        + AddAssign<Self>
+        + Sub<Self, Output = Self>
+        + SubAssign<Self>
+        + Mul<Self, Output = Self>
+        + MulAssign<Self>
+        + Div<Self, Output = Self>
+        + DivAssign<Self>
+        + Into<f64>,
+{
+    const MIN: Self;
+    const MAX: Self;
+    const ZERO: Self;
+    const ONE: Self;
+
+    fn min(self, other: Self) -> Self;
+    fn max(self, other: Self) -> Self;
+    fn clamp(self, min: Self, max: Self) -> Self;
 }
 
-impl<T> Size<T> {
-    pub const fn new(width: T, height: T) -> Self {
-        Self { width, height }
+impl Num for i32 {
+    const MIN: Self = i32::MIN;
+    const MAX: Self = i32::MAX;
+    const ZERO: Self = 0;
+    const ONE: Self = 1;
+
+    fn min(self, other: Self) -> Self {
+        Ord::min(self, other)
     }
-}
 
-impl Size<u32> {
-    pub const fn area(&self) -> u32 {
-        self.width * self.height
+    fn max(self, other: Self) -> Self {
+        Ord::max(self, other)
     }
 
-    pub fn min(&self, other: Self) -> Self {
-        size(self.width.min(other.width), self.height.min(other.height))
-    }
-
-    pub fn max(&self, other: Self) -> Self {
-        size(self.width.max(other.width), self.height.max(other.height))
-    }
-
-    pub fn clamp(&self, min: Self, max: Self) -> Self {
-        size(
-            self.width.clamp(min.width, max.width),
-            self.height.clamp(min.height, max.height),
-        )
-    }
-}
-
-pub const fn size<T>(width: T, height: T) -> Size<T> {
-    Size::new(width, height)
-}
-
-#[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, Hash)]
-pub struct Delta<T = f32> {
-    pub x: T,
-    pub y: T,
-}
-
-impl<T> Delta<T> {
-    pub const fn new(x: T, y: T) -> Self {
-        Self { x, y }
-    }
-}
-
-impl Delta<f32> {
-    pub const ZERO: Self = Self::new(0.0, 0.0);
-    pub const ONE: Self = Self::new(1.0, 1.0);
-}
-
-impl Delta<i32> {
-    pub const ZERO: Self = Self::new(0, 0);
-    pub const ONE: Self = Self::new(1, 1);
-}
-
-#[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, Hash)]
-pub struct Position<T = i32> {
-    pub x: T,
-    pub y: T,
-}
-
-impl<T> Position<T> {
-    pub const fn new(x: T, y: T) -> Self {
-        Self { x, y }
+    fn clamp(self, min: Self, max: Self) -> Self {
+        Ord::clamp(self, min, max)
     }
 }
 
-impl Position<i32> {
-    pub const ZERO: Self = Self::new(0, 0);
+impl Num for u32 {
+    const MIN: Self = u32::MIN;
+    const MAX: Self = u32::MAX;
+    const ZERO: Self = 0;
+    const ONE: Self = 1;
 
-    pub const fn delta(self, other: Self) -> Delta<i32> {
-        Delta::new(other.x - self.x, other.y - self.y)
+    fn min(self, other: Self) -> Self {
+        Ord::min(self, other)
     }
-}
 
-pub const fn pos<T>(x: T, y: T) -> Position<T> {
-    Position::new(x, y)
-}
+    fn max(self, other: Self) -> Self {
+        Ord::max(self, other)
+    }
 
-impl std::ops::Add for Position<i32> {
-    type Output = Self;
-    #[track_caller]
-    fn add(self, rhs: Self) -> Self::Output {
-        pos(self.x + rhs.x, self.y + rhs.y)
-    }
-}
-impl std::ops::Sub for Position<i32> {
-    type Output = Self;
-    #[track_caller]
-    fn sub(self, rhs: Self) -> Self::Output {
-        pos(self.x - rhs.x, self.y - rhs.y)
-    }
-}
-impl std::ops::Mul for Position<i32> {
-    type Output = Self;
-    #[track_caller]
-    fn mul(self, rhs: Self) -> Self::Output {
-        pos(self.x * rhs.x, self.y * rhs.y)
-    }
-}
-impl std::ops::Div for Position<i32> {
-    type Output = Self;
-    #[track_caller]
-    fn div(self, rhs: Self) -> Self::Output {
-        pos(self.x / rhs.x, self.y / rhs.y)
+    fn clamp(self, min: Self, max: Self) -> Self {
+        Ord::clamp(self, min, max)
     }
 }
 
-impl std::ops::Add<i32> for Position<i32> {
-    type Output = Self;
-    #[track_caller]
-    fn add(self, rhs: i32) -> Self::Output {
-        pos(self.x + rhs, self.y + rhs)
+impl Num for f32 {
+    const MIN: Self = f32::MIN;
+    const MAX: Self = f32::MAX;
+    const ZERO: Self = 0.0;
+    const ONE: Self = 1.0;
+
+    fn min(self, other: Self) -> Self {
+        f32::min(self, other)
     }
-}
-impl std::ops::Sub<i32> for Position<i32> {
-    type Output = Self;
-    #[track_caller]
-    fn sub(self, rhs: i32) -> Self::Output {
-        pos(self.x - rhs, self.y - rhs)
+
+    fn max(self, other: Self) -> Self {
+        f32::max(self, other)
     }
-}
-impl std::ops::Mul<i32> for Position<i32> {
-    type Output = Self;
-    #[track_caller]
-    fn mul(self, rhs: i32) -> Self::Output {
-        pos(self.x * rhs, self.y * rhs)
-    }
-}
-impl std::ops::Div<i32> for Position<i32> {
-    type Output = Self;
-    #[track_caller]
-    fn div(self, rhs: i32) -> Self::Output {
-        pos(self.x / rhs, self.y / rhs)
+
+    fn clamp(self, min: Self, max: Self) -> Self {
+        f32::clamp(self, min, max)
     }
 }
 
-impl std::ops::AddAssign for Position<i32> {
-    #[track_caller]
-    fn add_assign(&mut self, rhs: Self) {
-        *self = *self + rhs
-    }
-}
-impl std::ops::SubAssign for Position<i32> {
-    #[track_caller]
-    fn sub_assign(&mut self, rhs: Self) {
-        *self = *self - rhs
-    }
-}
-impl std::ops::MulAssign for Position<i32> {
-    #[track_caller]
-    fn mul_assign(&mut self, rhs: Self) {
-        *self = *self * rhs
-    }
-}
-impl std::ops::DivAssign for Position<i32> {
-    #[track_caller]
-    fn div_assign(&mut self, rhs: Self) {
-        *self = *self / rhs
-    }
-}
-impl std::ops::AddAssign<i32> for Position<i32> {
-    #[track_caller]
-    fn add_assign(&mut self, rhs: i32) {
-        *self = *self + rhs
-    }
-}
-impl std::ops::SubAssign<i32> for Position<i32> {
-    #[track_caller]
-    fn sub_assign(&mut self, rhs: i32) {
-        *self = *self - rhs
-    }
-}
-impl std::ops::MulAssign<i32> for Position<i32> {
-    #[track_caller]
-    fn mul_assign(&mut self, rhs: i32) {
-        *self = *self * rhs
-    }
-}
-impl std::ops::DivAssign<i32> for Position<i32> {
-    #[track_caller]
-    fn div_assign(&mut self, rhs: i32) {
-        *self = *self / rhs
-    }
-}
+impl Num for f64 {
+    const MIN: Self = f64::MIN;
+    const MAX: Self = f64::MAX;
+    const ZERO: Self = 0.0;
+    const ONE: Self = 1.0;
 
-impl std::ops::Not for Position<i32> {
-    type Output = Self;
-    fn not(self) -> Self::Output {
-        pos(-self.x, -self.y)
+    fn min(self, other: Self) -> Self {
+        f64::min(self, other)
+    }
+
+    fn max(self, other: Self) -> Self {
+        f64::max(self, other)
+    }
+
+    fn clamp(self, min: Self, max: Self) -> Self {
+        f64::clamp(self, min, max)
     }
 }

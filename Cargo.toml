@@ -3,3 +3,6 @@ members = [ "crates/*" ]
 resolver = "3"
 
 package.edition = "2024"
+
+# [patch.'https://github.com/helix-editor/termina']
+# termina = { git = "https://github.com/museun/termina", branch = "fix_windows_resize" }
