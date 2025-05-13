@@ -41,9 +41,9 @@ pub trait Application {
 }
 
 pub trait Runner: Application + Sized {
-    fn run(self) -> std::io::Result<()> {
+    fn run(self, fps: f32) -> std::io::Result<()> {
         let term = Terminal::create(Config::new())?;
-        self::run(30.0, term, self)
+        self::run(fps, term, self)
     }
 
     fn debug(mut self) -> String {

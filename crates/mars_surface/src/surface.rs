@@ -67,6 +67,7 @@ impl<T> Surface<T> {
         self.size = size;
     }
 
+    #[track_caller]
     const fn pos_of(stride: u32, pos: Position) -> u32 {
         pos.y as u32 * stride + pos.x as u32
     }
@@ -80,6 +81,7 @@ impl<T> Surface<T> {
     }
 
     #[inline(always)]
+    #[track_caller]
     pub fn get(&self, pos: Position) -> Option<&T> {
         // FIXME check over/underflow
         let index = Self::pos_of(self.size.width, pos + self.pos) as usize;
@@ -87,12 +89,14 @@ impl<T> Surface<T> {
     }
 
     #[inline(always)]
+    #[track_caller]
     pub fn get_mut(&mut self, pos: Position) -> Option<&mut T> {
         // FIXME check over/underflow
         let index = Self::pos_of(self.size.width, pos + self.pos) as usize;
         self.pixels.get_mut(index)
     }
 
+    #[track_caller]
     pub fn set(&mut self, pos: Position, value: T) {
         let Some(pixel) = self.get_mut(pos) else {
             return;
