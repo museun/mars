@@ -117,6 +117,13 @@ impl Pixel {
     #[allow(dead_code)]
     // FIXME: this should maybe be on the Color type instead
     pub(crate) fn blend_bg(old: Color, other: Color, default: Color, mode: BlendMode) -> Color {
+        fn pick_blend(left: Rgba, right: Rgba) -> fn(Rgba, Rgba) -> Rgba {
+            match (left.alpha(), right.alpha()) {
+                (0xFF, r) if r < 0xFF => Rgba::blend_alpha,
+                _ => Rgba::blend_flat,
+            }
+        }
+
         let BlendMode::Blend = mode else {
             return other.get_or_default(default);
         };
@@ -127,7 +134,7 @@ impl Pixel {
             (Color::Rgba(left), Color::Rgba(right)) => (left, right),
             _ => return other,
         };
-        let mode = Rgba::pick_blend(left, right);
+        let mode = pick_blend(left, right);
         Color::Rgba(mode(left, right))
     }
 }

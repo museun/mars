@@ -124,13 +124,6 @@ impl Rgba {
         Self(r, g, b, a)
     }
 
-    pub fn pick_blend(left: Self, right: Self) -> fn(Self, Self) -> Self {
-        match (left.alpha(), right.alpha()) {
-            (0xFF, r) if r < 0xFF => Self::blend_alpha,
-            _ => Self::blend_flat,
-        }
-    }
-
     pub fn mix(self, left: f32, other: Self, right: f32) -> Self {
         let [r0, g0, b0, a0] = self.to_float();
         let [r1, g1, b1, a1] = other.to_float();
