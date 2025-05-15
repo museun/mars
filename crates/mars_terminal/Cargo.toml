@@ -6,4 +6,4 @@ edition.workspace = true
 [dependencies]
 mars_math.workspace = true
 
-termina = { git = "https://github.com/helix-editor/termina", rev = "07cc87ef7ae03e63557da8d73f1eb8a6028b23ca" }
+termina = { git = "https://github.com/helix-editor/termina", rev = "b7f6c327a64533c5c798e2c409191620b75c492e" }

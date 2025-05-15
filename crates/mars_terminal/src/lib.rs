@@ -81,7 +81,7 @@ impl Terminal {
         let mut terminal = termina::PlatformTerminal::new()?;
         terminal.enter_raw_mode()?;
 
-        let termina::WindowSize { cols, rows } = terminal.get_dimensions()?;
+        let termina::WindowSize { cols, rows, .. } = terminal.get_dimensions()?;
         let size = Size::new(cols as _, rows as _);
 
         Self::initialize(&mut terminal, config)?;
@@ -300,7 +300,7 @@ impl EventState {
         match event {
             &termina::Event::Key(ke) => self.translate_key(ke),
             &termina::Event::Mouse(me) => self.translate_mouse(me),
-            &termina::Event::WindowResized(termina::WindowSize { rows, cols }) => {
+            &termina::Event::WindowResized(termina::WindowSize { rows, cols, .. }) => {
                 let size = Size::new(cols as u32, rows as u32);
                 self.queue.push_back(Event::Resize { size });
             }
