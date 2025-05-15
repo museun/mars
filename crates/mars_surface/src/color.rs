@@ -159,24 +159,6 @@ impl Rgba {
         ])
     }
 
-    // linear
-
-    fn linear_to_srgb(linear: f32) -> f32 {
-        if linear <= 0.0031308 {
-            12.92 * linear
-        } else {
-            1.055 * linear.powf(const { 1.0 / 2.4 }) - 0.055
-        }
-    }
-
-    fn srgb_to_linear(srgb: f32) -> f32 {
-        if srgb <= 0.04045 {
-            srgb / 12.92
-        } else {
-            ((srgb + 0.055) / 1.055).powf(2.4)
-        }
-    }
-
     pub fn blend_flat(self, other: Self) -> Self {
         self.blend_linear(other, 0.5)
     }
@@ -199,6 +181,71 @@ impl Rgba {
         let g = blend(a, g0, g1);
         let b = blend(a, b0, b1);
         Self(r, g, b, a as u8)
+    }
+}
+
+impl std::ops::Add for Rgba {
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self::Output {
+        let Rgba(r0, g0, b0, a0) = self;
+        let Rgba(r1, g1, b1, a1) = rhs;
+        Self::new(
+            r0.saturating_add(r1),
+            g0.saturating_add(g1),
+            b0.saturating_add(b1),
+            a0.max(a1),
+        )
+    }
+}
+
+impl std::ops::Sub for Rgba {
+    type Output = Self;
+    fn sub(self, rhs: Self) -> Self::Output {
+        let Rgba(r0, g0, b0, a0) = self;
+        let Rgba(r1, g1, b1, a1) = rhs;
+        Self::new(
+            r0.saturating_sub(r1),
+            g0.saturating_sub(g1),
+            b0.saturating_sub(b1),
+            a0.max(a1),
+        )
+    }
+}
+
+impl std::ops::Mul for Rgba {
+    type Output = Self;
+    fn mul(self, rhs: Self) -> Self::Output {
+        let Rgba(r0, g0, b0, a0) = self;
+        let Rgba(r1, g1, b1, a1) = rhs;
+        Self::new(
+            ((r0 as u16 * r1 as u16) / 255) as u8,
+            ((g0 as u16 * g1 as u16) / 255) as u8,
+            ((b0 as u16 * b1 as u16) / 255) as u8,
+            a0.max(a1),
+        )
+    }
+}
+
+impl std::ops::Div for Rgba {
+    type Output = Self;
+    fn div(self, rhs: Self) -> Self::Output {
+        let Rgba(r0, g0, b0, a0) = self;
+        let Rgba(r1, g1, b1, a1) = rhs;
+        Self::new(
+            255 - ((255 - r0 as u16) * (255 - r1 as u16) / 255) as u8,
+            255 - ((255 - g0 as u16) * (255 - g1 as u16) / 255) as u8,
+            255 - ((255 - b0 as u16) * (255 - b1 as u16) / 255) as u8,
+            a0.max(a1),
+        )
+    }
+}
+
+impl std::ops::BitXor for Rgba {
+    type Output = Self;
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        let Rgba(r0, g0, b0, a0) = self;
+        let Rgba(r1, g1, b1, a1) = rhs;
+        Self::new(r0 ^ r1, g0 ^ g1, b0 ^ b1, a0.max(a1))
     }
 }
 
@@ -437,36 +484,4 @@ mod color_helpers {
         0x585858, 0x626262, 0x6C6C6C, 0x767676, 0x808080, 0x8A8A8A, 0x949494, 0x9E9E9E, //
         0xA8A8A8, 0xB2B2B2, 0xBCBCBC, 0xC6C6C6, 0xD0D0D0, 0xDADADA, 0xE4E4E4, 0xEEEEEE, //
     ];
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn what_is_wrong() {
-        let a = Rgba::hex("#F00");
-        let b = Rgba::hex("#DDD");
-
-        eprintln!("{:.2?}", a.to_float());
-        eprintln!("{:.2?}", b.to_float());
-
-        eprintln!("{:p}", Rgba::blend_alpha as fn(Rgba, Rgba) -> Rgba);
-        eprintln!("{:p}", Rgba::blend_flat as fn(Rgba, Rgba) -> Rgba);
-
-        let mode = Rgba::pick_blend(a, b);
-        eprintln!("it picked.. {mode:p}");
-
-        eprintln!("{a:X} -- {:X}", Rgba::from_float(a.to_float()));
-        eprintln!("{b:X} -- {:X}", Rgba::from_float(b.to_float()));
-
-        let t = mode(a, b);
-        eprintln!("{t:X}");
-        eprintln!("{:.2?}", t.to_float())
-    }
-
-    #[test]
-    fn is_parsing_wrong() {
-        eprintln!("{:X}", Rgba::hex("#9988b3"))
-    }
 }

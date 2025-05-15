@@ -96,6 +96,7 @@ impl Pixel {
         }
     }
 
+    // TODO actually do the merging
     pub fn merge_mut(&mut self, other: Self) {
         *self = other;
         // if self.foreground.is_transparent() {
@@ -113,6 +114,8 @@ impl Pixel {
         self
     }
 
+    #[allow(dead_code)]
+    // FIXME: this should maybe be on the Color type instead
     pub(crate) fn blend_bg(old: Color, other: Color, default: Color, mode: BlendMode) -> Color {
         let BlendMode::Blend = mode else {
             return other.get_or_default(default);

@@ -1,8 +1,9 @@
 [workspace]
 members = [ "crates/*" ]
 resolver = "3"
-
 package.edition = "2024"
 
-# [patch.'https://github.com/helix-editor/termina']
-# termina = { git = "https://github.com/museun/termina", branch = "fix_windows_resize" }
+[workspace.dependencies]
+mars_math = { path = "crates/mars_math" }
+mars_surface = { path = "crates/mars_surface" }
+mars_terminal = { path = "crates/mars_terminal" }

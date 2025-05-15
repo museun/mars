@@ -1,12 +1,9 @@
-mod surface_renderer;
 use std::ops::RangeInclusive;
-
-pub use surface_renderer::SurfaceRenderer;
 
 mod basic_renderer;
 pub use basic_renderer::BasicRenderer;
 
-use crate::{Color, Drawable, Pixel, Rasterizer, Style};
+use crate::{Color, Drawable, Pixel, Rasterizer};
 use mars_math::{Axis, Position, Size};
 
 #[derive(Copy, Clone, Default, Debug, PartialEq)]
@@ -123,10 +120,6 @@ pub trait Placer {
 pub trait PlacerExt<'a: 'b, 'b>: Placer + 'a {
     fn set(&'b mut self, pos: Position, pixel: Pixel, blend: BlendMode) -> &'b mut Self {
         self.put(pos, pixel, blend);
-        self
-    }
-
-    fn text(&'b mut self, pos: Position, text: &str, style: Style) -> &'b mut Self {
         self
     }
 

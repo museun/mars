@@ -51,7 +51,8 @@ impl BasicRenderer {
         self.size
     }
 
-    pub fn put(&mut self, pos: Position, pixel: Pixel, blend: BlendMode) {
+    // TODO don't ignore the blend mode
+    pub fn put(&mut self, pos: Position, pixel: Pixel, _blend: BlendMode) {
         let Some(pos) = pos.to_unsigned_checked() else {
             return;
         };
@@ -60,16 +61,7 @@ impl BasicRenderer {
             return;
         }
 
-        let old = &mut self.surface[pos];
-
-        let left = old.background;
-        let right = pixel.foreground;
-
-        *old = pixel;
-        // *old = Pixel {
-        //     background: Pixel::blend_bg(left, right, self.default_bg, blend),
-        //     ..pixel
-        // }
+        self.surface[pos] = pixel;
     }
 
     pub fn render<R>(&mut self, mut rasterizer: R) -> Result<(), R::Error>

@@ -4,5 +4,6 @@ version = "0.1.0"
 edition.workspace = true
 
 [dependencies]
-mars_math = { version = "0.1.0", path = "../mars_math" }
+mars_math.workspace = true
+
 termina = { git = "https://github.com/helix-editor/termina", rev = "07cc87ef7ae03e63557da8d73f1eb8a6028b23ca" }

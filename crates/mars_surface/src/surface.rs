@@ -127,6 +127,48 @@ impl<T> Surface<T> {
         self.pixels[start..end].copy_from_slice(&row[..stride.min(end - start)]);
     }
 
+    pub fn scroll_up_copy(&mut self, y: usize)
+    where
+        T: Copy,
+    {
+        if y == 0 || y >= self.size.height as usize - 1 {
+            return;
+        }
+
+        let width = self.size.width as usize;
+
+        let row = y * width;
+        let prev = row..row + width;
+
+        let row = (y + 1) * width;
+        let row = row..row + width;
+
+        if let Ok([prev, next]) = self.pixels.get_disjoint_mut([prev, row]) {
+            prev.copy_from_slice(next);
+        }
+    }
+
+    pub fn scroll_up_clone(&mut self, y: usize)
+    where
+        T: Clone,
+    {
+        if y == 0 || y >= self.size.height as usize - 1 {
+            return;
+        }
+
+        let width = self.size.width as usize;
+
+        let row = y * width;
+        let prev = row..row + width;
+
+        let row = (y + 1) * width;
+        let row = row..row + width;
+
+        if let Ok([prev, next]) = self.pixels.get_disjoint_mut([prev, row]) {
+            prev.clone_from_slice(next);
+        }
+    }
+
     pub fn clone_row(&mut self, pos: Position, row: &[T])
     where
         T: Clone,
@@ -224,6 +266,27 @@ impl<T> std::ops::IndexMut<Position<u32>> for Surface<T> {
     #[inline]
     fn index_mut(&mut self, index: Position<u32>) -> &mut Self::Output {
         let index = Position::new(index.x as _, index.y as _);
+        let index = Self::pos_of(self.size.width, index + self.pos) as usize;
+        &mut self.pixels[index]
+    }
+}
+
+impl<T> std::ops::Index<(u32, u32)> for Surface<T> {
+    type Output = T;
+    #[track_caller]
+    #[inline]
+    fn index(&self, (x, y): (u32, u32)) -> &Self::Output {
+        let index = Position::new(x as _, y as _);
+        let index = Self::pos_of(self.size.width, index + self.pos) as usize;
+        &self.pixels[index]
+    }
+}
+
+impl<T> std::ops::IndexMut<(u32, u32)> for Surface<T> {
+    #[track_caller]
+    #[inline]
+    fn index_mut(&mut self, (x, y): (u32, u32)) -> &mut Self::Output {
+        let index = Position::new(x as _, y as _);
         let index = Self::pos_of(self.size.width, index + self.pos) as usize;
         &mut self.pixels[index]
     }

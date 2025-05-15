@@ -3,7 +3,7 @@ use mars_math::{Anchor2, Size};
 use mars_surface::{BlendMode, Drawable as _, DrawableExt as _, Renderer, RendererSetup, Rgba};
 
 fn main() -> std::io::Result<()> {
-    App::default().run()
+    App::default().run(60.0)
 }
 
 #[derive(Default)]

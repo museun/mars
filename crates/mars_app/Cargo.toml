@@ -4,6 +4,6 @@ version = "0.1.0"
 edition.workspace = true
 
 [dependencies]
-mars_math = { version = "0.1.0", path = "../mars_math" }
-mars_surface = { version = "0.1.0", path = "../mars_surface" }
-mars_terminal = { version = "0.1.0", path = "../mars_terminal" }
+mars_math.workspace = true
+mars_surface.workspace = true
+mars_terminal.workspace = true

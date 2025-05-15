@@ -1,7 +1,5 @@
 mod renderer;
-pub use renderer::{
-    BasicRenderer, BlendMode, Placer, PlacerExt, Renderer, RendererSetup, SurfaceRenderer,
-};
+pub use renderer::{BasicRenderer, BlendMode, Placer, PlacerExt, Renderer, RendererSetup};
 
 mod drawable;
 pub use drawable::{Drawable, DrawableExt};
