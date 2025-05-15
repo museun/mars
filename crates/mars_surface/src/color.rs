@@ -131,8 +131,8 @@ impl Rgba {
         let ratio = left + right;
         Self::from_float([
             left.mul_add(r0, right * r1) / ratio,
-            left.mul_add(b0, right * g1) / ratio,
-            left.mul_add(g0, right * b1) / ratio,
+            left.mul_add(g0, right * g1) / ratio,
+            left.mul_add(b0, right * b1) / ratio,
             a0.max(a1),
         ])
     }
